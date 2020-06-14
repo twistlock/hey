@@ -23,7 +23,6 @@ import (
 	"net/http"
 	"net/http/httptrace"
 	"net/url"
-	"os"
 	"sync"
 	"time"
 
@@ -77,16 +76,9 @@ type Work struct {
 	// DisableRedirects is an option to prevent the following of HTTP redirects
 	DisableRedirects bool
 
-	// Output represents the output type. If "csv" is provided, the
-	// output will be dumped as a csv stream.
-	Output string
-
 	// ProxyAddr is the address of HTTP proxy server in the format on "host:port".
 	// Optional.
 	ProxyAddr *url.URL
-
-	// Writer is where results will be written. If nil, results are written to stdout.
-	Writer io.Writer
 
 	initOnce sync.Once
 	results  chan *result
@@ -94,13 +86,6 @@ type Work struct {
 	start    time.Duration
 
 	report *report
-}
-
-func (b *Work) writer() io.Writer {
-	if b.Writer == nil {
-		return os.Stdout
-	}
-	return b.Writer
 }
 
 // Init initializes internal data-structures
@@ -111,18 +96,18 @@ func (b *Work) Init() {
 	})
 }
 
-// Run makes all the requests, prints the summary. It blocks until
+// Run makes all the requests and returns a report. It blocks until
 // all work is done.
-func (b *Work) Run() {
+func (b *Work) Run() *Report {
 	b.Init()
 	b.start = now()
-	b.report = newReport(b.writer(), b.results, b.Output, b.N)
+	b.report = newReport(b.results, b.N)
 	// Run the reporter first, it polls the result channel until it is closed.
 	go func() {
 		runReporter(b.report)
 	}()
 	b.runWorkers()
-	b.Finish()
+	return b.Finish()
 }
 
 func (b *Work) Stop() {
@@ -132,12 +117,12 @@ func (b *Work) Stop() {
 	}
 }
 
-func (b *Work) Finish() {
+func (b *Work) Finish() *Report {
 	close(b.results)
 	total := now() - b.start
 	// Wait until the reporter is done.
 	<-b.report.done
-	b.report.finalize(total)
+	return b.report.finalize(total)
 }
 
 func (b *Work) makeRequest(c *http.Client) {

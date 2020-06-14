@@ -16,9 +16,6 @@ package requester
 
 import (
 	"bytes"
-	"fmt"
-	"io"
-	"log"
 	"sort"
 	"time"
 )
@@ -58,19 +55,14 @@ type report struct {
 	lats      []float64
 	sizeTotal int64
 	numRes    int64
-	output    string
-
-	w io.Writer
 }
 
-func newReport(w io.Writer, results chan *result, output string, n int) *report {
+func newReport(results chan *result, n int) *report {
 	cap := min(n, maxRes)
 	return &report{
-		output:      output,
 		results:     results,
 		done:        make(chan bool, 1),
 		errorDist:   make(map[string]int),
-		w:           w,
 		connLats:    make([]float64, 0, cap),
 		dnsLats:     make([]float64, 0, cap),
 		reqLats:     make([]float64, 0, cap),
@@ -113,7 +105,7 @@ func runReporter(r *report) {
 	r.done <- true
 }
 
-func (r *report) finalize(total time.Duration) {
+func (r *report) finalize(total time.Duration) *Report {
 	r.total = total
 	r.rps = float64(r.numRes) / r.total.Seconds()
 	r.average = r.avgTotal / float64(len(r.lats))
@@ -122,22 +114,8 @@ func (r *report) finalize(total time.Duration) {
 	r.avgDNS = r.avgDNS / float64(len(r.lats))
 	r.avgReq = r.avgReq / float64(len(r.lats))
 	r.avgRes = r.avgRes / float64(len(r.lats))
-	r.print()
-}
-
-func (r *report) print() {
-	buf := &bytes.Buffer{}
-	if err := newTemplate(r.output).Execute(buf, r.snapshot()); err != nil {
-		log.Println("error:", err.Error())
-		return
-	}
-	r.printf(buf.String())
-
-	r.printf("\n")
-}
-
-func (r *report) printf(s string, v ...interface{}) {
-	fmt.Fprintf(r.w, s, v...)
+	s := r.snapshot()
+	return &s
 }
 
 func (r *report) snapshot() Report {
@@ -309,6 +287,15 @@ type Report struct {
 
 	LatencyDistribution []LatencyDistribution
 	Histogram           []Bucket
+}
+
+// String returns the report in output format
+func (r *Report) String(output string) (string, error) {
+	buf := &bytes.Buffer{}
+	if err := newTemplate(output).Execute(buf, r); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
 }
 
 type LatencyDistribution struct {
