@@ -29,7 +29,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rakyll/hey/requester"
+	"github.com/twistlock/hey/requester"
 )
 
 const (
@@ -224,7 +224,6 @@ func main() {
 		DisableRedirects:   *disableRedirects,
 		H2:                 *h2,
 		ProxyAddr:          proxyURL,
-		Output:             *output,
 	}
 	w.Init()
 
@@ -240,7 +239,11 @@ func main() {
 			w.Stop()
 		}()
 	}
-	w.Run()
+	report, err := w.Run().String(*output)
+	if err != nil {
+		errAndExit(err.Error())
+	}
+	fmt.Println(report)
 }
 
 func errAndExit(msg string) {
